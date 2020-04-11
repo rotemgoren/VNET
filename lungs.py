@@ -41,41 +41,46 @@ def chunks(l,n):
 
 def preprocess_data(patient,IMG_PX_SIZE=50,visulize=False):
     #label=labels_df[labels_df['Id']==patient[:-4]]['Values'].values[0]
+    try:
+        img = nib.load(imagesTr_path+patient)
+        img_data=img.get_fdata()
+        #img_data = img_data[:, :, int(img_data.shape[2]/2) - int(SLICES / 2):int(img_data.shape[2]/2) + int(SLICES / 2)]
 
-    img = nib.load(imagesTr_path+patient)
-    img_data=img.get_fdata()
-    #img_data = img_data[:, :, int(img_data.shape[2]/2) - int(SLICES / 2):int(img_data.shape[2]/2) + int(SLICES / 2)]
 
+        img_data = cv2.resize(img_data, (IMG_PX_SIZE, IMG_PX_SIZE))
 
-    img_data = cv2.resize(img_data, (IMG_PX_SIZE, IMG_PX_SIZE))
-
-    img_data = (img_data-np.min(img_data,axis=(0,1)))/(np.max(img_data,axis=(0,1))-np.min(img_data,axis=(0,1)))
-    img_data=np.array(img_data,dtype=np.float32)
-
-    img = nib.load(labelsTr_path+patient)
-    label_data=img.get_fdata()
-    #label_data = label_data[:, :, int(label_data.shape[2]/2) - int(SLICES / 2):int(label_data.shape[2]/2) + int(SLICES / 2)]
-
-    label_data = cv2.resize(label_data, (IMG_PX_SIZE, IMG_PX_SIZE))
-
-    label=[np.zeros_like(label_data),np.zeros_like(label_data)]
-    #label[0][label_data==0] = 1
-    #label[1][label_data!=0] = 1
-    label=label_data
-    label=np.array(label,dtype=np.float32)
-    if(visulize==True):
-        #while(True):
-        #y = fig.add_subplot(4, 4, i+1)
+        img_data = (img_data-np.min(img_data,axis=(0,1)))/(np.max(img_data,axis=(0,1))-np.min(img_data,axis=(0,1)))
         for i in range(img_data.shape[2]):
+            img_data[:, :, i] = cv2.equalizeHist((img_data[:, :, i]*255).astype(np.uint8))
 
-            cv2.imshow('im',np.array(img_data[ :, :, i]*255,dtype=np.uint8))
-            cv2.waitKey(10)
+        img_data = (img_data - np.min(img_data, axis=(0, 1))) / (np.max(img_data, axis=(0, 1)) - np.min(img_data, axis=(0, 1)))
+        img_data = np.array(img_data,dtype=np.float32)
+        img = nib.load(labelsTr_path+patient)
+        label_data=img.get_fdata()
+        #label_data = label_data[:, :, int(label_data.shape[2]/2) - int(SLICES / 2):int(label_data.shape[2]/2) + int(SLICES / 2)]
 
-            cv2.imshow('label',np.array(label_data[ :, :, i]*255,dtype=np.uint8))
-            cv2.waitKey(10)
+        label_data = cv2.resize(label_data, (IMG_PX_SIZE, IMG_PX_SIZE))
+
+        #label=[np.zeros_like(label_data),np.zeros_like(label_data)]
+        #label[0][label_data==0] = 1
+        #label[1][label_data!=0] = 1
+        label=label_data
+        label=np.array(label,dtype=np.float32)
+        if(visulize==True):
+            #while(True):
+            #y = fig.add_subplot(4, 4, i+1)
+            for i in range(img_data.shape[2]):
+
+                cv2.imshow('im',np.array(img_data[ :, :, i]*255,dtype=np.uint8))
+                cv2.waitKey(10)
+
+                cv2.imshow('label',np.array(label_data[ :, :, i]*255,dtype=np.uint8))
+                cv2.waitKey(10)
 
 
-    return img_data,label
+        return img_data,label
+    except:
+        return [],[]
     #new_slices = []
     #slices=[cv2.resize(np.array(each_slice.pixel_array),(IMG_PX_SIZE,IMG_PX_SIZE)) for each_slice in slices]
 
@@ -89,10 +94,10 @@ def train_model(x_train,y_train,x_valid,y_valid):
     torch.manual_seed(0)
     ngpu=1
     BATCH_SIZE=1
-    EPOCHS=50
+    EPOCHS=500
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #device = torch.device("cpu")
-    model_file=data_dir+'\\VNet.pth'
+    model_file='VNet.pth'
 
     model = VNet(device)
     if (os.path.isfile(model_file)):
@@ -251,7 +256,7 @@ def test_model(x_test,y_test,visulize = True):
     EPOCHS=50
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #device = torch.device("cpu")
-    model_file=data_dir+'\\VNet.pth'
+    model_file='VNet.pth'
 
     model = VNet(device)
     if (os.path.isfile(model_file)):
@@ -340,9 +345,9 @@ if __name__ == "__main__":
             try:
 
                 img_data, label_data = preprocess_data(patient, IMG_PX_SIZE, visulize=False)
-
-                data.append(img_data)
-                label.append(label_data)
+                if img_data != []:
+                    data.append(img_data)
+                    label.append(label_data)
 
             except KeyError as e:
                 print('This is unlabeld data')
