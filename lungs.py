@@ -337,7 +337,7 @@ if __name__ == "__main__":
         train_label=np.load(data_dir + '\\train_label.npy')
 
     else:
-        for num, patientFile in enumerate(glob.glob(os.path.join(imagesTr_path, "*.gz"))[0:20]):
+        for num, patientFile in enumerate(glob.glob(os.path.join(imagesTr_path, "*.gz"))[0:2]):
 
             patient = patientFile.split('\\')[-1]
             if (num % 10 == 0):
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     vaild_data = data[int(len(data)*vaildRatio):]
     vaild_label = label[int(len(label) * vaildRatio):]
 
-    train_model(train_data,train_label,vaild_data,vaild_label)
+    #train_model(train_data,train_label,vaild_data,vaild_label)
     test_model(train_data,train_label,visulize = True)
 
     # img_data=torch.FloatTensor(img_data).unsqueeze(0).unsqueeze(1)
