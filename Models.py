@@ -9,15 +9,15 @@ from torchsummary import summary
 import torch.nn.functional as F
 
 
-NUM_SLICES=16
+NUM_SLICES=3
 class Dataset(data.Dataset):
-    def __init__(self, x,y,step):
+    def __init__(self, x,y,step = int(NUM_SLICES/2)):
 
 
 
         
-            self.x = torch.cat([torch.FloatTensor(x[:,:,i:i+NUM_SLICES]).unsqueeze(0).unsqueeze(1) for i in range(0,int(x.shape[2]/NUM_SLICES)*NUM_SLICES-step,step)])
-            self.y = torch.cat([torch.FloatTensor(y[:,:,i:i+NUM_SLICES]).unsqueeze(0).unsqueeze(1) for i in range(0,int(x.shape[2]/NUM_SLICES)*NUM_SLICES-step,step)])
+            self.x = torch.cat([torch.FloatTensor(x[:,:,i:i+NUM_SLICES]).unsqueeze(0).unsqueeze(1) for i in range(0,int(x.shape[2]/NUM_SLICES)*NUM_SLICES-2,step)])
+            self.y = torch.cat([torch.FloatTensor(y[:,:,i:i+NUM_SLICES]).unsqueeze(0).unsqueeze(1) for i in range(0,int(x.shape[2]/NUM_SLICES)*NUM_SLICES-2,step)])
 
 
     def __getitem__(self, index):
@@ -38,7 +38,7 @@ class DownConvBlock(nn.Module):
             self.conv2.append(nn.Conv3d(in_channels=mid_channels,out_channels=mid_channels,padding=1,kernel_size=kernel_size,stride=1).to(self.device).float())
         self.conv3 = nn.Conv3d(in_channels=mid_channels, out_channels=out_channels,padding=1, kernel_size=kernel_size, stride=1).to(self.device).float()
 
-        self.pool4 = nn.MaxPool3d(kernel_size=2,stride=2)
+        self.pool4 = nn.MaxPool3d(kernel_size=(2,2,1),stride=(2,2,1))
         self.bn1 = nn.BatchNorm3d(mid_channels).to(self.device).float()
         self.bn2 = nn.BatchNorm3d(out_channels).to(self.device).float()
 
@@ -74,7 +74,7 @@ class UpConvBlock(nn.Module):
         self.conv2 = []
         for _ in range(1,self.num_layers):
             self.conv2.append(nn.Conv3d(mid_channels,mid_channels,padding=1,kernel_size=kernel_size,stride=1).to(self.device).float())
-        self.conv3 = nn.ConvTranspose3d(mid_channels, out_channels, kernel_size=2, stride=2).to(self.device).float()
+        self.conv3 = nn.ConvTranspose3d(mid_channels, out_channels, kernel_size=(2,2,1),stride=(2,2,1)).to(self.device).float()
         self.bn1 = nn.BatchNorm3d(mid_channels).to(self.device).float()
         self.bn2 = nn.BatchNorm3d(out_channels).to(self.device).float()
         self.prelu = nn.ReLU().to(self.device).float()
@@ -122,6 +122,10 @@ class VNet(nn.Module):
         x5,x = self.down_conv3(x)
         x7,x = self.down_conv4(x)
 
+        # x8, x = self.down_conv4_(x)
+        #
+        # x = self.up_conv5_(x)
+        # x = torch.cat((x8,x),dim=1)
 
         x = self.up_conv5(x)
         x = torch.cat((x7,x),dim=1)

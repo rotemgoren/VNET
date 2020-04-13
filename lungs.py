@@ -93,7 +93,7 @@ def DiceLoss(x,y):
 def train_model(x_train,y_train,x_valid,y_valid):
     torch.manual_seed(0)
     ngpu=1
-    BATCH_SIZE=1
+    BATCH_SIZE=2
     EPOCHS=500
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     #device = torch.device("cpu")
@@ -120,31 +120,31 @@ def train_model(x_train,y_train,x_valid,y_valid):
     for epoch in range(EPOCHS):
         train_loss = 0
         valid_loss = 0
-        total_train = 0
-        correct_train = 0
-        total_valid = 0
-        correct_valid = 0
+        train_accuracy=0
+        valid_accuracy=0
         model.train()
         start = time.time()
         i=0
         for x,y in tqdm(zip(x_train,y_train)):
 
-            try:
-                dataset = Dataset(x, y,8)
-                dataloader = torch.utils.data.DataLoader(dataset, batch_size=ngpu,
-                                                               shuffle=True, num_workers=1,
+            #try:
+                dataset = Dataset(x, y)
+                dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE*ngpu,
+                                                               shuffle=False, num_workers=1,
                                                                pin_memory=True)  # divided into batches
                 optimizer.zero_grad()
                 for (X,gt) in (dataloader):
-                    if(gt[:,0,:,:,:].sum()>0):
+                    if((gt.sum(dim=(2,3,4))>0).all()):
                         #start = time.time()
                         i+=1
                         X=X.to(device, non_blocking=True).float()
                         gt=gt.to(device, non_blocking=True).float()
 
                         o = model(X)
-                        weight=((gt.shape[2]*gt.shape[3]*gt.shape[4]-gt.sum(dim=(2,3,4)))/gt.sum(dim=(2,3,4))).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+                        weight = (gt.shape[1:].numel() - gt.sum(dim=(1, 2, 3, 4))) / gt.sum(dim=(1, 2, 3, 4))
+                        weight = weight.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
                         loss = nn.BCELoss(weight=weight)(o,gt)
+
                         #loss = DiceLoss(o,gt)
 
 
@@ -166,35 +166,13 @@ def train_model(x_train,y_train,x_valid,y_valid):
                         predicted[predicted > 0.5] = 1
                         true = gt.data
 
-                        total_train+=true.sum()
-                        correct_train+=predicted.sum()
+                        train_accuracy+= (predicted*true).sum()/ true.sum()
 
-                        visulize=False
-                        if (visulize == True):
-                            # while(True):
-                            # y = fig.add_subplot(4, 4, i+1)
-                            x=X.cpu().numpy()
-                            y=true.cpu().numpy()
-                            predict = predicted.cpu().numpy()
-
-                            for j in range(x.shape[4]):
-
-                                cv2.imshow('im', np.array(x[0,0, :, :, j] * 255, dtype=np.uint8))
-                                cv2.waitKey(10)
-
-                                cv2.imshow('label', np.array(y[0,0, :, :, j] * 255, dtype=np.uint8))
-                                cv2.waitKey(10)
-
-                                cv2.imshow('predict', np.array(predict[0,0, :, :, j] * 255, dtype=np.uint8))
-                                cv2.waitKey(10)
-
-                        #total_train += true.size(0) * true.size(1) * true.size(2)*true.size(3)
-                        #correct_train += predicted.eq(true.data).sum().item()
                         torch.cuda.empty_cache()
 
-            except:
-                pass
-        train_accuracy = correct_train / total_train
+            #except:
+            #    pass
+        train_accuracy = train_accuracy / i
         train_loss = train_loss / i
         torch.cuda.empty_cache()
 
@@ -203,21 +181,22 @@ def train_model(x_train,y_train,x_valid,y_valid):
         i=0
         with torch.no_grad():
             for x, y in tqdm(zip(x_valid, y_valid)):
-                try:
-                    dataset = Dataset(x, y,8)
-                    dataloader = torch.utils.data.DataLoader(dataset, batch_size=ngpu,
-                                                             shuffle=True, num_workers=1,
+                #try:
+                    dataset = Dataset(x, y)
+                    dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE*ngpu,
+                                                             shuffle=False, num_workers=1,
                                                              pin_memory=True)  # divided into batches
 
                     for X, gt in dataloader:
-                        if (gt[:,0, :, :, :].sum() > 0):
+                        if ((gt.sum(dim=(2,3,4))>0).all()):
                             i+=1
                             X = X.to(device).float()
                             gt = gt.to(device).float()
 
                             o = model(X)
                             #loss = nn.BCELoss()(o,gt)
-                            weight = ((gt.shape[2] * gt.shape[3] * gt.shape[4] - gt.sum(dim=(2, 3, 4))) / gt.sum(dim=(2, 3, 4))).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+                            weight = (gt.shape[1:].numel() - gt.sum(dim=(1, 2, 3, 4))) / gt.sum(dim=(1, 2, 3, 4))
+                            weight = weight.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
                             loss = nn.BCELoss(weight=weight)(o, gt)
                             #loss = DiceLoss(o,gt)
 
@@ -231,15 +210,12 @@ def train_model(x_train,y_train,x_valid,y_valid):
                             predicted[predicted < 0.5] = 0
                             predicted[predicted > 0.5] = 1
                             true = gt.data
+                            valid_accuracy += (predicted * true).sum() / true.sum()
 
-                            total_valid+=true.sum()
-                            correct_valid+=predicted.sum()
-                            #total_valid += true.size(0) * true.size(1) * true.size(2) * true.size(3)
-                            #correct_valid += predicted.eq(true.data).sum().item()
                             torch.cuda.empty_cache()
-                except:
-                    pass
-            valid_accuracy = correct_valid / total_valid
+                #except:
+                #    pass
+            valid_accuracy = valid_accuracy/i
             valid_loss = valid_loss / i
             torch.cuda.empty_cache()
         print("Est time={} sec".format(time.time() - start))
@@ -279,7 +255,7 @@ def test_model(x_test,y_test,visulize = True):
         for x, y in tqdm(zip(x_test, y_test)):
 
             # try:
-            dataset = Dataset(x, y, 16)
+            dataset = Dataset(x, y,3)
             dataloader = torch.utils.data.DataLoader(dataset, batch_size=ngpu,
                                                      shuffle=False, num_workers=1,
                                                      pin_memory=True)  # divided into batches
@@ -306,19 +282,28 @@ def test_model(x_test,y_test,visulize = True):
                     if (visulize == True):
                         # while(True):
                         # y = fig.add_subplot(4, 4, i+1)
+                        alpha=0.5
                         x = X.cpu().numpy()
                         y = true.cpu().numpy()
                         predict = predicted.cpu().numpy()
 
                         for j in range(x.shape[4]):
-                            cv2.imshow('im', np.array(x[0, 0, :, :, j] * 255, dtype=np.uint8))
+
+                            gt_mask=np.zeros((IMG_PX_SIZE,IMG_PX_SIZE,3),dtype=np.uint8)
+                            gt_mask[:,:,2]=np.array(y[0, 0, :, :, j] * 255, dtype=np.uint8)
+                            gt_image = alpha*np.repeat(np.expand_dims(x[0,0,:,:,j]*255,axis=2),3,axis=2) + (1-alpha)*gt_mask
+                            cv2.imshow('gt', np.array(gt_image,dtype=np.uint8))
                             cv2.waitKey(10)
 
-                            cv2.imshow('label', np.array(y[0, 0, :, :, j] * 255, dtype=np.uint8))
+                            predict_mask=np.zeros((IMG_PX_SIZE,IMG_PX_SIZE,3),dtype=np.uint8)
+                            predict_mask[:,:,2]=np.array(predict[0, 0, :, :, j] * 255, dtype=np.uint8)
+                            predict_image = alpha*np.repeat(np.expand_dims(x[0,0,:,:,j]*255,axis=2),3,axis=2) + (1-alpha)*predict_mask
+                            cv2.imshow('predict', np.array(predict_image,dtype=np.uint8))
                             cv2.waitKey(10)
+                            if(gt_mask.sum()>0):
+                                print("tumor")
 
-                            cv2.imshow('predict', np.array(predict[0, 0, :, :, j] * 255, dtype=np.uint8))
-                            cv2.waitKey(10)
+
 
                     # total_train += true.size(0) * true.size(1) * true.size(2)*true.size(3)
                     # correct_train += predicted.eq(true.data).sum().item()
@@ -337,7 +322,7 @@ if __name__ == "__main__":
         train_label=np.load(data_dir + '\\train_label.npy')
 
     else:
-        for num, patientFile in enumerate(glob.glob(os.path.join(imagesTr_path, "*.gz"))[0:2]):
+        for num, patientFile in enumerate(glob.glob(os.path.join(imagesTr_path, "*.gz"))[0:5]):
 
             patient = patientFile.split('\\')[-1]
             if (num % 10 == 0):
